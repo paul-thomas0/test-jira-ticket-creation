@@ -196,11 +196,11 @@ Instead of the web request above, use:
 
 ## 🎯 What This Setup Provides
 
-✅ **GitHub Issue** → **Jira Ticket** (automatic)
-✅ **GitHub Comments** → **Jira Comments** (automatic)
-✅ **Jira Comments** → **GitHub Comments** (automatic)
-✅ **GitHub Issue Updates** → **Jira Ticket Updates** (automatic)
-✅ **Bidirectional linking and attribution**
-✅ **Prevention of infinite loops**
+**GitHub Issue** → **Jira Ticket** (automatic)
+**GitHub Comments** → **Jira Comments** (automatic)
+**Jira Comments** → **GitHub Comments** (automatic)
+**GitHub Issue Updates** → **Jira Ticket Updates** (automatic)
+**Bidirectional linking and attribution**
+**Prevention of infinite loops**
 
 Your GitHub-Jira integration is now complete with full two-way synchronization!
