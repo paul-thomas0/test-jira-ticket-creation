@@ -1,0 +1,382 @@
+name: GitHub-Jira Two-Way Sync
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+  repository_dispatch:
+    types: [jira-comment-sync]
+
+env:
+  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+  JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+  JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+
+jobs:
+  sync-issue-to-jira:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Jira ticket from GitHub issue
+        id: create-jira
+        run: |
+          # Prepare the issue description with GitHub metadata
+          ISSUE_BODY=$(cat << 'EOF'
+          *Original GitHub Issue:* ${{ github.event.issue.html_url }}
+          *Created by:* ${{ github.event.issue.user.login }}
+          *Created at:* ${{ github.event.issue.created_at }}
+
+          ---
+
+          ${{ github.event.issue.body }}
+          EOF
+          )
+
+          # Create Jira issue payload
+          PAYLOAD=$(cat << 'EOF'
+          {
+            "fields": {
+              "project": {
+                "key": "${{ env.JIRA_PROJECT_KEY }}"
+              },
+              "summary": "[GitHub] ${{ github.event.issue.title }}",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Original GitHub Issue: "
+                      },
+                      {
+                        "type": "text",
+                        "text": "${{ github.event.issue.html_url }}",
+                        "marks": [
+                          {
+                            "type": "link",
+                            "attrs": {
+                              "href": "${{ github.event.issue.html_url }}"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Created by: ${{ github.event.issue.user.login }}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rule"
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "${{ github.event.issue.body }}"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "issuetype": {
+                "name": "Task"
+              },
+              "customfield_10000": "${{ github.event.issue.html_url }}"
+            }
+          }
+          EOF
+          )
+
+          # Create the Jira issue
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
+            -d "$PAYLOAD" \
+            "${{ env.JIRA_BASE_URL }}/rest/api/3/issue")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          if [ "$HTTP_CODE" -eq 201 ]; then
+            JIRA_KEY=$(echo "$BODY" | jq -r '.key')
+            JIRA_URL="${{ env.JIRA_BASE_URL }}/browse/$JIRA_KEY"
+            echo "jira-key=$JIRA_KEY" >> $GITHUB_OUTPUT
+            echo "jira-url=$JIRA_URL" >> $GITHUB_OUTPUT
+            echo "✅ Successfully created Jira ticket: $JIRA_KEY"
+          else
+            echo "❌ Failed to create Jira ticket. HTTP Code: $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+
+      - name: Comment on GitHub issue with Jira link
+        if: steps.create-jira.outputs.jira-key
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🎫 **Jira Ticket Created**\n\n**Ticket:** [${{ steps.create-jira.outputs.jira-key }}](${{ steps.create-jira.outputs.jira-url }})\n\nThis GitHub issue has been synchronized with Jira. Comments made on either platform will be synced automatically.`
+            });
+
+  sync-github-comment-to-jira:
+    if: github.event_name == 'issue_comment' && github.event.action == 'created'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Jira ticket key from issue
+        id: get-jira-key
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            let jiraKey = null;
+            let jiraUrl = null;
+
+            for (const comment of comments.data) {
+              const match = comment.body.match(/\*\*Ticket:\*\* \[([A-Z]+-\d+)\]\((.*?)\)/);
+              if (match) {
+                jiraKey = match[1];
+                jiraUrl = match[2];
+                break;
+              }
+            }
+
+            if (jiraKey) {
+              core.setOutput('jira-key', jiraKey);
+              core.setOutput('jira-url', jiraUrl);
+              console.log(`Found Jira ticket: ${jiraKey}`);
+            } else {
+              console.log('No Jira ticket found for this issue');
+            }
+
+      - name: Add comment to Jira ticket
+        if: steps.get-jira-key.outputs.jira-key
+        run: |
+          COMMENT_BODY="*Comment from GitHub by ${{ github.event.comment.user.login }}:*\n\n${{ github.event.comment.body }}\n\n---\n[View on GitHub](${{ github.event.comment.html_url }})"
+
+          PAYLOAD=$(cat << 'EOF'
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Comment from GitHub by ${{ github.event.comment.user.login }}:",
+                      "marks": [{"type": "em"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "${{ github.event.comment.body }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "rule"
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "View on GitHub",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "${{ github.event.comment.html_url }}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
+            -d "$PAYLOAD" \
+            "${{ env.JIRA_BASE_URL }}/rest/api/3/issue/${{ steps.get-jira-key.outputs.jira-key }}/comment")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+          if [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Successfully added comment to Jira ticket: ${{ steps.get-jira-key.outputs.jira-key }}"
+          else
+            echo "❌ Failed to add comment to Jira ticket. HTTP Code: $HTTP_CODE"
+            echo "Response: $(echo "$RESPONSE" | head -n -1)"
+          fi
+
+  sync-jira-comment-to-github:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'jira-comment-sync'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Jira comment to GitHub issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const payload = context.payload.client_payload;
+
+            if (!payload.issue_number || !payload.comment_body || !payload.author) {
+              core.setFailed('Missing required payload data');
+              return;
+            }
+
+            const commentBody = `💬 **Comment from Jira by ${payload.author}:**\n\n${payload.comment_body}\n\n---\n*Synced from [Jira](${payload.jira_url || 'Jira'})*`;
+
+            await github.rest.issues.createComment({
+              issue_number: payload.issue_number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+
+            console.log(`✅ Added Jira comment to GitHub issue #${payload.issue_number}`);
+
+  update-jira-on-issue-edit:
+    if: github.event_name == 'issues' && github.event.action == 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Jira ticket key from issue
+        id: get-jira-key
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            let jiraKey = null;
+
+            for (const comment of comments.data) {
+              const match = comment.body.match(/\*\*Ticket:\*\* \[([A-Z]+-\d+)\]/);
+              if (match) {
+                jiraKey = match[1];
+                break;
+              }
+            }
+
+            if (jiraKey) {
+              core.setOutput('jira-key', jiraKey);
+              console.log(`Found Jira ticket: ${jiraKey}`);
+            } else {
+              console.log('No Jira ticket found for this issue');
+            }
+
+      - name: Update Jira ticket description
+        if: steps.get-jira-key.outputs.jira-key
+        run: |
+          PAYLOAD=$(cat << 'EOF'
+          {
+            "fields": {
+              "summary": "[GitHub] ${{ github.event.issue.title }}",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Original GitHub Issue: "
+                      },
+                      {
+                        "type": "text",
+                        "text": "${{ github.event.issue.html_url }}",
+                        "marks": [
+                          {
+                            "type": "link",
+                            "attrs": {
+                              "href": "${{ github.event.issue.html_url }}"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Last updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "rule"
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "${{ github.event.issue.body }}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+          EOF
+          )
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X PUT \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
+            -d "$PAYLOAD" \
+            "${{ env.JIRA_BASE_URL }}/rest/api/3/issue/${{ steps.get-jira-key.outputs.jira-key }}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+          if [ "$HTTP_CODE" -eq 204 ]; then
+            echo "✅ Successfully updated Jira ticket: ${{ steps.get-jira-key.outputs.jira-key }}"
+          else
+            echo "❌ Failed to update Jira ticket. HTTP Code: $HTTP_CODE"
+            echo "Response: $(echo "$RESPONSE" | head -n -1)"
+          fi
