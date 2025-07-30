@@ -9,23 +9,38 @@ This guide explains how to set up complete two-way synchronization between GitHu
 - Jira API token
 - GitHub Personal Access Token (for Jira → GitHub sync)
 
-## 🔧 Step 1: Configure GitHub Repository Secrets
+## 🔧 Step 1: Configure GitHub Environment and Secrets
 
-Add the following secrets to your GitHub repository (**Settings > Secrets and variables > Actions**):
+### Create Environment:
+1. Go to your GitHub repository **Settings > Environments**
+2. Click **New environment**
+3. Name it `jira-integration`
+4. Click **Configure environment**
+5. (Optional) Add protection rules if needed
 
-| Secret Name        | Description                                   | Example                             |
-| ------------------ | --------------------------------------------- | ----------------------------------- |
-| `JIRA_BASE_URL`    | Your Jira instance URL                        | `https://yourcompany.atlassian.net` |
-| `JIRA_USER_EMAIL`  | Email of Jira user for API access             | `automation@yourcompany.com`        |
-| `JIRA_API_TOKEN`   | Jira API token                                | `ATATT3xFfGF0...`                   |
-| `JIRA_PROJECT_KEY` | Jira project key where issues will be created | `PROJ`                              |
+### Add Environment Secrets:
+In the `jira-integration` environment, add the following secrets:
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `JIRA_BASE_URL` | Your Jira instance URL | `https://yourcompany.atlassian.net` |
+| `JIRA_USER_EMAIL` | Email of Jira user for API access | `automation@yourcompany.com` |
+| `JIRA_API_TOKEN` | Jira API token | `ATATT3xFfGF0...` |
+| `JIRA_PROJECT_KEY` | Jira project key where issues will be created | `PROJ` |
 
 ### How to get Jira API Token:
-
 1. Go to [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
 2. Click **Create API token**
 3. Give it a name (e.g., "GitHub Sync")
 4. Copy the generated token
+
+### 💡 Benefits of Environment Secrets:
+- **Reusability**: Share secrets across multiple repositories
+- **Environment-specific configs**: Different settings for dev/staging/prod
+- **Better organization**: Centralized secret management
+- **Access control**: Fine-grained permissions per environment
+
+> **Alternative**: If you prefer, you can use repository secrets instead by removing the `environment: jira-integration` lines from the workflow and adding secrets to **Settings > Secrets and variables > Actions**.
 
 ## 📁 Step 2: Add GitHub Workflow
 
@@ -36,7 +51,6 @@ Add the following secrets to your GitHub repository (**Settings > Secrets and va
 ## 🎫 Step 3: Configure Jira Custom Fields
 
 ### Create GitHub Issue URL Field:
-
 1. Go to **Jira Settings** (⚙️) > **Issues** > **Custom fields**
 2. Click **Create custom field**
 3. Select **URL Field**
@@ -44,9 +58,7 @@ Add the following secrets to your GitHub repository (**Settings > Secrets and va
 5. Add to relevant screens for your project
 
 ### Update Field ID in Workflow:
-
 The workflow uses `customfield_10000` as an example. Update this with your actual custom field ID:
-
 1. Go to **Jira Settings** > **Issues** > **Custom fields**
 2. Find your "GitHub Issue URL" field
 3. Note the ID (e.g., `customfield_10001`)
@@ -55,7 +67,6 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 ## 🤖 Step 4: Set Up Jira Automation (Jira → GitHub)
 
 ### Create GitHub Personal Access Token:
-
 1. Go to GitHub **Settings** > **Developer settings** > **Personal access tokens** > **Tokens (classic)**
 2. Click **Generate new token (classic)**
 3. Name: `Jira-Comment-Sync`
@@ -68,11 +79,9 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 2. Click **Create rule**
 
 #### A. Trigger:
-
 - Select: **Issue commented**
 
 #### B. Conditions:
-
 1. **Issue fields condition**:
    - Field: `GitHub Issue URL`
    - Condition: `is not empty`
@@ -83,15 +92,12 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
    - Second value: `GitHub Sync Bot`
 
 #### C. Action - Send Web Request:
-
-- **URL**:
-
+- **URL**: 
   ```
   https://api.github.com/repos/{{issue.GitHub Issue URL.split("/").get(3)}}/{{issue.GitHub Issue URL.split("/").get(4)}}/issues/{{issue.GitHub Issue URL.split("/").get(6)}}/comments
   ```
 
 - **Headers**:
-
   ```
   Authorization: Bearer YOUR_GITHUB_PAT_HERE
   Accept: application/vnd.github.v3+json
@@ -108,7 +114,6 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
   ```
 
 #### D. Name and Activate:
-
 - Name: `Sync Jira comments to GitHub`
 - Turn it on
 
@@ -117,7 +122,6 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 If you prefer to use GitHub's repository dispatch instead of direct API calls from Jira:
 
 ### Jira Automation Webhook Action:
-
 Instead of the web request above, use:
 
 - **URL**: `https://api.github.com/repos/OWNER/REPO/dispatches`
@@ -143,18 +147,15 @@ Instead of the web request above, use:
 ## 📊 Step 6: Test the Integration
 
 ### Test GitHub → Jira:
-
 1. Create a new GitHub issue
 2. Check that a Jira ticket is created
 3. Verify the GitHub issue gets a comment with the Jira link
 
 ### Test GitHub Comments → Jira:
-
 1. Add a comment to the GitHub issue
 2. Check that the comment appears in the Jira ticket
 
 ### Test Jira Comments → GitHub:
-
 1. Add a comment to the Jira ticket
 2. Check that the comment appears in the GitHub issue
 
@@ -164,43 +165,50 @@ Instead of the web request above, use:
 
 1. **Jira ticket not created**:
    - Check GitHub Actions logs
-   - Verify Jira API credentials
+   - Verify Jira API credentials in environment secrets
    - Ensure project key exists
+   - Confirm environment `jira-integration` is configured
 
-2. **Custom field not populated**:
+2. **Environment access denied**:
+   - Check environment protection rules
+   - Verify the workflow has access to the environment
+   - Ensure secrets are added to the correct environment
+
+3. **Custom field not populated**:
    - Verify field ID in workflow
    - Check field is on create screen
 
-3. **Jira automation not triggered**:
+4. **Jira automation not triggered**:
    - Check automation rule is enabled
    - Verify conditions are met
    - Check Jira automation audit log
 
-4. **GitHub API errors from Jira**:
+5. **GitHub API errors from Jira**:
    - Verify GitHub PAT has `repo` scope
    - Check URL template in automation rule
    - Ensure repository exists and is accessible
 
 ### Debugging:
-
 - Check GitHub Actions logs: **Actions** tab in your repository
 - Check Jira automation logs: **Project settings** > **Automation** > **Audit log**
 - Test Jira API calls manually using curl or Postman
 
 ## 🔒 Security Notes
 
-- Store all tokens as secrets, never in code
+- Store all tokens as environment secrets, never in code
 - Use dedicated service accounts with minimal required permissions
+- Configure environment protection rules for production environments
 - Regularly rotate API tokens
 - Monitor automation logs for suspicious activity
+- Consider requiring reviews for deployments to protected environments
 
 ## 🎯 What This Setup Provides
 
-**GitHub Issue** → **Jira Ticket** (automatic)
-**GitHub Comments** → **Jira Comments** (automatic)
-**Jira Comments** → **GitHub Comments** (automatic)
-**GitHub Issue Updates** → **Jira Ticket Updates** (automatic)
-**Bidirectional linking and attribution**
-**Prevention of infinite loops**
+✅ **GitHub Issue** → **Jira Ticket** (automatic)  
+✅ **GitHub Comments** → **Jira Comments** (automatic)  
+✅ **Jira Comments** → **GitHub Comments** (automatic)  
+✅ **GitHub Issue Updates** → **Jira Ticket Updates** (automatic)  
+✅ **Bidirectional linking and attribution**  
+✅ **Prevention of infinite loops**  
 
 Your GitHub-Jira integration is now complete with full two-way synchronization!
