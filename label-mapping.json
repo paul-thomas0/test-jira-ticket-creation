@@ -2,9 +2,9 @@
   "mappings": {
     "Bug Report": "Bug Report",
     "Improvement": "Improvement",
-    "Technical Support": "Technical upport",
+    "Technical support": "Technical support",
     "Feature Request": "New Feature"
   },
-  "defaultIssueType": "Technical Support",
+  "defaultIssueType": "Technical support",
   "description": "Maps GitHub issue template labels to corresponding Jira issue types. Current mappings match the JIRA board issue types: Improvement, New Feature, Bug Report, Technical Support. Feature Request template maps to New Feature issue type."
 }

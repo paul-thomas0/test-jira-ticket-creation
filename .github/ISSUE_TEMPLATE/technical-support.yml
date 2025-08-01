@@ -1,6 +1,6 @@
 name: "❓ Request Support"
 description: "Ask for help on how to use the platform or understand a feature."
-labels: ["Technical Support"]
+labels: ["Technical support"]
 body:
   - type: textarea
     id: question
