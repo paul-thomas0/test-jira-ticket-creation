@@ -1,0 +1,35 @@
+name: "🐛 Report a Platform Issue / Bug"
+description: "Report something broken, an error, or unexpected behavior."
+labels: ["Bug Report"]
+body:
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: "Which part of the platform is affected?"
+      description: "This helps us route your issue to the correct team."
+      options:
+        - "REELS"
+        - "ALPHA"
+        - "TRINITY"
+        - "AI HUB"
+        - "Other"
+    validations:
+      required: true
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: "Urgency / Impact"
+      description: "How critical is this issue?"
+      options:
+        - "High - Production system is down or severely impacted."
+        - "Medium - A non-critical feature is not working."
+        - "Low - Minor issue or cosmetic bug."
+    validations:
+      required: true
+  - type: textarea
+    id: issue-description
+    attributes:
+      label: "Issue Description"
+      description: "Please provide a clear and concise description of what is happening. Include any error messages."
+    validations:
+      required: true

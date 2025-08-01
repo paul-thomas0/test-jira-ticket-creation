@@ -1,0 +1,16 @@
+name: "❓ Request Support"
+description: "Ask for help on how to use the platform or understand a feature."
+labels: ["Technical Support"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: "What is your question?"
+      description: "Please be as specific as possible."
+    validations:
+      required: true
+  - type: textarea
+    id: what-tried
+    attributes:
+      label: "What have you already tried or checked?"
+      description: "e.g., 'I have already read the documentation on page X.'"
