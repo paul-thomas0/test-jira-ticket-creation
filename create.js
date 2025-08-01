@@ -50,6 +50,8 @@ async function createIssue(projectKey, issueType, summary, description, addition
       },
     };
 
+    console.log(data);
+
     // GitHub URL is now included in the description body, not as a custom field
 
     const config = {
