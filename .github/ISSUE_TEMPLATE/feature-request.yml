@@ -1,0 +1,62 @@
+name: "🚀 Request a New Feature"
+description: "Propose a completely new feature or functionality for the platform."
+labels: ["Feature Request"]
+body:
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: "Feature Description"
+      description: "Describe the new feature you'd like to see implemented."
+      placeholder: "e.g., 'Add a real-time chat system for user collaboration'"
+    validations:
+      required: true
+  - type: dropdown
+    id: target-area
+    attributes:
+      label: "Which part of the platform should this feature be added to?"
+      description: "This helps us route your request to the correct development team."
+      options:
+        - "REELS"
+        - "ALPHA"
+        - "TRINITY"
+        - "AI HUB"
+        - "Cross-platform / General"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: business-justification
+    attributes:
+      label: "Business Justification"
+      description: "Why is this feature important? What problem does it solve or what value does it add?"
+      placeholder: "e.g., 'This would improve user engagement by 30% and reduce support tickets'"
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-implementation
+    attributes:
+      label: "Proposed Implementation (Optional)"
+      description: "If you have ideas on how this feature could be implemented, please share them."
+      placeholder: "e.g., 'Could use WebSocket connections with a Redis backend for real-time messaging'"
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Business Priority"
+      description: "How important is this feature to your business needs?"
+      options:
+        - "High - Critical for business operations"
+        - "Medium - Would significantly improve workflows"
+        - "Low - Nice to have enhancement"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: "Acceptance Criteria"
+      description: "What would make this feature considered complete and successful?"
+      placeholder: "e.g., 'Users can send messages, see online status, receive notifications'"
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "Additional Context"
+      description: "Any other information, mockups, screenshots, or references that would help us understand this feature request."

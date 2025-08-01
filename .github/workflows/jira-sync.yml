@@ -46,14 +46,24 @@ jobs:
           EOF
           )
 
+          # Map GitHub issue labels to Jira issue types using mapping script
+          GITHUB_LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
+          echo "GitHub labels detected: $GITHUB_LABELS"
+
+          # Get Jira issue type from mapping script
+          JIRA_ISSUE_TYPE=$(node map-issue-type.js "$GITHUB_LABELS")
+
+          echo "Mapped to Jira issue type: $JIRA_ISSUE_TYPE"
+
           # Create Jira issue using Node.js script
           node create.js \
-            "Task" \
+            "$JIRA_ISSUE_TYPE" \
             "[GitHub] ${{ github.event.issue.title }}" \
             "$ISSUE_BODY" \
             "${{ github.event.issue.html_url }}" \
             "${{ github.event.issue.user.login }}" \
-            "${{ github.event.issue.created_at }}"
+            "${{ github.event.issue.created_at }}" \
+            "$GITHUB_LABELS"
 
       - name: Comment on GitHub issue with Jira link
         if: steps.create-jira.outputs.jira-key

@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { textToADF, isValidADF } = require("./adf-utils");
+const { mapGitHubIssueToJiraFields } = require("./map-issue-type");
 
 // Get environment variables (GitHub workflow style)
 const username = process.env.JIRA_USER_EMAIL;
@@ -18,10 +19,10 @@ const auth = {
  * @param {string} issueType - Issue type (e.g., "Task", "Bug", "Story")
  * @param {string} summary - Issue title/summary
  * @param {string|object} description - Issue description (plain text or ADF object)
-
+ * @param {object} additionalFields - Additional Jira fields (priority, components, etc.)
  * @returns {Promise<string>} - Jira issue key
  */
-async function createIssue(projectKey, issueType, summary, description) {
+async function createIssue(projectKey, issueType, summary, description, additionalFields = {}) {
   try {
     // Handle description: convert plain text to ADF or use existing ADF
     let adfDescription;
@@ -45,6 +46,7 @@ async function createIssue(projectKey, issueType, summary, description) {
         summary: summary,
         description: adfDescription,
         issuetype: { name: issueType },
+        ...additionalFields,
       },
     };
 
@@ -74,9 +76,10 @@ async function createIssue(projectKey, issueType, summary, description) {
  * @param {string} author - GitHub issue author
  * @param {string} createdAt - Creation timestamp
  * @param {string} body - Issue body
+ * @param {object} mappingInfo - Additional mapping information
  * @returns {object} - ADF formatted description
  */
-function createGitHubIssueADF(githubUrl, author, createdAt, body) {
+function createGitHubIssueADF(githubUrl, author, createdAt, body, mappingInfo = {}) {
   const content = [
     // GitHub issue link
     {
@@ -126,6 +129,53 @@ function createGitHubIssueADF(githubUrl, author, createdAt, body) {
     },
   ];
 
+  // Add mapping information if provided
+  if (mappingInfo.labels && mappingInfo.labels.length > 0) {
+    content.push({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: `GitHub Labels: ${mappingInfo.labels.join(", ")}`,
+          marks: [{ type: "em" }],
+        },
+      ],
+    });
+  }
+
+  if (mappingInfo.issueType) {
+    content.push({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: `Mapped to Issue Type: ${mappingInfo.issueType}`,
+          marks: [{ type: "em" }],
+        },
+      ],
+    });
+  }
+
+  if (mappingInfo.priority) {
+    content.push({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: `Priority: ${mappingInfo.priority}`,
+          marks: [{ type: "em" }],
+        },
+      ],
+    });
+  }
+
+  // Add another separator before issue body
+  if (body && body.trim()) {
+    content.push({
+      type: "rule",
+    });
+  }
+
   // Add issue body if provided
   if (body && body.trim()) {
     // Split body into paragraphs
@@ -157,15 +207,15 @@ if (require.main === module) {
 
   if (args.length < 3) {
     console.error(
-      "Usage: node create.js <issueType> <summary> <description> [githubUrl] [author] [createdAt]",
+      "Usage: node create.js <issueType> <summary> <description> [githubUrl] [author] [createdAt] [githubLabelsJson]",
     );
     console.error(
-      "Example: node create.js 'Task' 'Issue title' 'Issue description' 'https://github.com/user/repo/issues/1' 'username' '2023-01-01T00:00:00Z'",
+      "Example: node create.js 'Task' 'Issue title' 'Issue description' 'https://github.com/user/repo/issues/1' 'username' '2023-01-01T00:00:00Z' '[\"Bug Report\"]'",
     );
     process.exit(1);
   }
 
-  const [issueType, summary, description, githubUrl, author, createdAt] = args;
+  const [issueType, summary, description, githubUrl, author, createdAt, githubLabelsJson] = args;
 
   // Validate required environment variables
   if (!username || !password || !baseUrl || !projectKey) {
@@ -181,16 +231,64 @@ if (require.main === module) {
   (async () => {
     try {
       let finalDescription;
+      let additionalFields = {};
+      let mappingInfo = {};
+
+      // Parse GitHub labels if provided
+      if (githubLabelsJson) {
+        try {
+          const githubLabels = JSON.parse(githubLabelsJson);
+          const mockIssue = {
+            labels: githubLabels.map((label) => ({ name: label })),
+            body: description,
+            title: summary,
+          };
+
+          const mapping = mapGitHubIssueToJiraFields(mockIssue);
+          mappingInfo = mapping;
+
+          // Set priority if mapped
+          if (mapping.priority) {
+            additionalFields.priority = { name: mapping.priority };
+          }
+
+          // Set components if mapped
+          if (mapping.components && mapping.components.length > 0) {
+            additionalFields.components = mapping.components.map((comp) => ({ name: comp }));
+          }
+
+          console.log(`🏷️  GitHub Labels: [${mapping.labels.join(", ")}]`);
+          console.log(`📋 Mapped Issue Type: ${mapping.issueType}`);
+          console.log(`⚡ Mapped Priority: ${mapping.priority}`);
+          if (mapping.components.length > 0) {
+            console.log(`🔧 Mapped Components: [${mapping.components.join(", ")}]`);
+          }
+        } catch (error) {
+          console.warn(`⚠️  Could not parse GitHub labels: ${error.message}`);
+        }
+      }
 
       // If GitHub metadata is provided, create rich ADF description
       if (githubUrl && author && createdAt) {
-        finalDescription = createGitHubIssueADF(githubUrl, author, createdAt, description);
+        finalDescription = createGitHubIssueADF(
+          githubUrl,
+          author,
+          createdAt,
+          description,
+          mappingInfo,
+        );
       } else {
         // Use plain description
         finalDescription = description;
       }
 
-      const issueKey = await createIssue(projectKey, issueType, summary, finalDescription);
+      const issueKey = await createIssue(
+        projectKey,
+        issueType,
+        summary,
+        finalDescription,
+        additionalFields,
+      );
       console.log(`✅ Successfully created Jira issue: ${issueKey}`);
       console.log(`🔗 Issue URL: ${baseUrl}/browse/${issueKey}`);
 
