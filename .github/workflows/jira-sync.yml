@@ -22,109 +22,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Create Jira ticket from GitHub issue
         id: create-jira
+        env:
+          GITHUB_URL_CUSTOM_FIELD: "customfield_10000"
         run: |
-          # Prepare the issue description with GitHub metadata
+          # Escape issue body for shell argument
           ISSUE_BODY=$(cat << 'EOF'
-          *Original GitHub Issue:* ${{ github.event.issue.html_url }}
-          *Created by:* ${{ github.event.issue.user.login }}
-          *Created at:* ${{ github.event.issue.created_at }}
-          
-          ---
-          
           ${{ github.event.issue.body }}
           EOF
           )
-          
-          # Create Jira issue payload
-          PAYLOAD=$(cat << 'EOF'
-          {
-            "fields": {
-              "project": {
-                "key": "${{ env.JIRA_PROJECT_KEY }}"
-              },
-              "summary": "[GitHub] ${{ github.event.issue.title }}",
-              "description": {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                  {
-                    "type": "paragraph",
-                    "content": [
-                      {
-                        "type": "text",
-                        "text": "Original GitHub Issue: "
-                      },
-                      {
-                        "type": "text",
-                        "text": "${{ github.event.issue.html_url }}",
-                        "marks": [
-                          {
-                            "type": "link",
-                            "attrs": {
-                              "href": "${{ github.event.issue.html_url }}"
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "type": "paragraph",
-                    "content": [
-                      {
-                        "type": "text",
-                        "text": "Created by: ${{ github.event.issue.user.login }}"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "rule"
-                  },
-                  {
-                    "type": "paragraph",
-                    "content": [
-                      {
-                        "type": "text",
-                        "text": "${{ github.event.issue.body }}"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "issuetype": {
-                "name": "Task"
-              },
-              "customfield_10000": "${{ github.event.issue.html_url }}"
-            }
-          }
-          EOF
-          )
-          
-          # Create the Jira issue
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
-            -d "$PAYLOAD" \
-            "${{ env.JIRA_BASE_URL }}/rest/api/3/issue")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          
-          if [ "$HTTP_CODE" -eq 201 ]; then
-            JIRA_KEY=$(echo "$BODY" | jq -r '.key')
-            JIRA_URL="${{ env.JIRA_BASE_URL }}/browse/$JIRA_KEY"
-            echo "jira-key=$JIRA_KEY" >> $GITHUB_OUTPUT
-            echo "jira-url=$JIRA_URL" >> $GITHUB_OUTPUT
-            echo "✅ Successfully created Jira ticket: $JIRA_KEY"
-          else
-            echo "❌ Failed to create Jira ticket. HTTP Code: $HTTP_CODE"
-            echo "Response: $BODY"
-            exit 1
-          fi
+
+          # Create Jira issue using Node.js script
+          node create.js \
+            "Task" \
+            "[GitHub] ${{ github.event.issue.title }}" \
+            "$ISSUE_BODY" \
+            "${{ github.event.issue.html_url }}" \
+            "${{ github.event.issue.user.login }}" \
+            "${{ github.event.issue.created_at }}"
 
       - name: Comment on GitHub issue with Jira link
         if: steps.create-jira.outputs.jira-key
@@ -157,10 +82,10 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
+
             let jiraKey = null;
             let jiraUrl = null;
-            
+
             for (const comment of comments.data) {
               const match = comment.body.match(/\*\*Ticket:\*\* \[([A-Z]+-\d+)\]\((.*?)\)/);
               if (match) {
@@ -169,7 +94,7 @@ jobs:
                 break;
               }
             }
-            
+
             if (jiraKey) {
               core.setOutput('jira-key', jiraKey);
               core.setOutput('jira-url', jiraUrl);
@@ -182,7 +107,7 @@ jobs:
         if: steps.get-jira-key.outputs.jira-key
         run: |
           COMMENT_BODY="*Comment from GitHub by ${{ github.event.comment.user.login }}:*\n\n${{ github.event.comment.body }}\n\n---\n[View on GitHub](${{ github.event.comment.html_url }})"
-          
+
           PAYLOAD=$(cat << 'EOF'
           {
             "body": {
@@ -233,7 +158,7 @@ jobs:
           }
           EOF
           )
-          
+
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             -X POST \
             -H "Accept: application/json" \
@@ -241,9 +166,9 @@ jobs:
             -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
             -d "$PAYLOAD" \
             "${{ env.JIRA_BASE_URL }}/rest/api/3/issue/${{ steps.get-jira-key.outputs.jira-key }}/comment")
-          
+
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          
+
           if [ "$HTTP_CODE" -eq 201 ]; then
             echo "✅ Successfully added comment to Jira ticket: ${{ steps.get-jira-key.outputs.jira-key }}"
           else
@@ -261,21 +186,21 @@ jobs:
         with:
           script: |
             const payload = context.payload.client_payload;
-            
+
             if (!payload.issue_number || !payload.comment_body || !payload.author) {
               core.setFailed('Missing required payload data');
               return;
             }
-            
+
             const commentBody = `💬 **Comment from Jira by ${payload.author}:**\n\n${payload.comment_body}\n\n---\n*Synced from [Jira](${payload.jira_url || 'Jira'})*`;
-            
+
             await github.rest.issues.createComment({
               issue_number: payload.issue_number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: commentBody
             });
-            
+
             console.log(`✅ Added Jira comment to GitHub issue #${payload.issue_number}`);
 
   update-jira-on-issue-edit:
@@ -297,9 +222,9 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
+
             let jiraKey = null;
-            
+
             for (const comment of comments.data) {
               const match = comment.body.match(/\*\*Ticket:\*\* \[([A-Z]+-\d+)\]/);
               if (match) {
@@ -307,7 +232,7 @@ jobs:
                 break;
               }
             }
-            
+
             if (jiraKey) {
               core.setOutput('jira-key', jiraKey);
               console.log(`Found Jira ticket: ${jiraKey}`);
@@ -374,7 +299,7 @@ jobs:
           }
           EOF
           )
-          
+
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             -X PUT \
             -H "Accept: application/json" \
@@ -382,9 +307,9 @@ jobs:
             -u "${{ env.JIRA_USER_EMAIL }}:${{ env.JIRA_API_TOKEN }}" \
             -d "$PAYLOAD" \
             "${{ env.JIRA_BASE_URL }}/rest/api/3/issue/${{ steps.get-jira-key.outputs.jira-key }}")
-          
+
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          
+
           if [ "$HTTP_CODE" -eq 204 ]; then
             echo "✅ Successfully updated Jira ticket: ${{ steps.get-jira-key.outputs.jira-key }}"
           else
