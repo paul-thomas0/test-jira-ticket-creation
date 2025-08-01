@@ -18,10 +18,10 @@ const auth = {
  * @param {string} issueType - Issue type (e.g., "Task", "Bug", "Story")
  * @param {string} summary - Issue title/summary
  * @param {string|object} description - Issue description (plain text or ADF object)
- * @param {string} githubUrl - GitHub issue URL (optional)
+
  * @returns {Promise<string>} - Jira issue key
  */
-async function createIssue(projectKey, issueType, summary, description, githubUrl = null) {
+async function createIssue(projectKey, issueType, summary, description) {
   try {
     // Handle description: convert plain text to ADF or use existing ADF
     let adfDescription;
@@ -48,10 +48,7 @@ async function createIssue(projectKey, issueType, summary, description, githubUr
       },
     };
 
-    // Add GitHub URL to custom field if provided
-    if (githubUrl && process.env.GITHUB_URL_CUSTOM_FIELD) {
-      data.fields[process.env.GITHUB_URL_CUSTOM_FIELD] = githubUrl;
-    }
+    // GitHub URL is now included in the description body, not as a custom field
 
     const config = {
       headers: { "Content-Type": "application/json" },
@@ -193,13 +190,7 @@ if (require.main === module) {
         finalDescription = description;
       }
 
-      const issueKey = await createIssue(
-        projectKey,
-        issueType,
-        summary,
-        finalDescription,
-        githubUrl,
-      );
+      const issueKey = await createIssue(projectKey, issueType, summary, finalDescription);
       console.log(`✅ Successfully created Jira issue: ${issueKey}`);
       console.log(`🔗 Issue URL: ${baseUrl}/browse/${issueKey}`);
 

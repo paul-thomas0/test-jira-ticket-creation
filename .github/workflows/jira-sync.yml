@@ -39,8 +39,6 @@ jobs:
 
       - name: Create Jira ticket from GitHub issue
         id: create-jira
-        env:
-          GITHUB_URL_CUSTOM_FIELD: "customfield_10000"
         run: |
           # Escape issue body for shell argument
           ISSUE_BODY=$(cat << 'EOF'

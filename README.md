@@ -37,12 +37,6 @@ In the `jira-integration` environment, add the following secrets:
 3. Give it a name (e.g., "GitHub Sync")
 4. Copy the generated token
 
-### Additional Environment Variable (Optional):
-
-| Secret Name               | Description                             | Example             |
-| ------------------------- | --------------------------------------- | ------------------- |
-| `GITHUB_URL_CUSTOM_FIELD` | Custom field ID for storing GitHub URLs | `customfield_10000` |
-
 ### 💡 Benefits of Environment Secrets:
 
 - **Reusability**: Share secrets across multiple repositories
@@ -75,24 +69,9 @@ your-repo/
 └── README.md
 ```
 
-## 🎫 Step 3: Configure Jira Custom Fields
+## 🎫 Step 3: Setup Complete!
 
-### Create GitHub Issue URL Field:
-
-1. Go to **Jira Settings** (⚙️) > **Issues** > **Custom fields**
-2. Click **Create custom field**
-3. Select **URL Field**
-4. Name: `GitHub Issue URL`
-5. Add to relevant screens for your project
-
-### Update Field ID in Environment:
-
-The workflow uses `customfield_10000` as an example. Update this with your actual custom field ID:
-
-1. Go to **Jira Settings** > **Issues** > **Custom fields**
-2. Find your "GitHub Issue URL" field
-3. Note the ID (e.g., `customfield_10001`)
-4. Add `GITHUB_URL_CUSTOM_FIELD` to your environment secrets with the correct field ID
+No additional Jira configuration is needed! The GitHub issue URL and metadata will be automatically included in the Jira issue description body using rich ADF formatting.
 
 ## 🤖 Step 4: Set Up Jira Automation (Jira → GitHub)
 
@@ -115,9 +94,10 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 
 #### B. Conditions:
 
-1. **Issue fields condition**:
-   - Field: `GitHub Issue URL`
-   - Condition: `is not empty`
+1. **Advanced compare condition**:
+   - First value: `{{issue.description}}`
+   - Condition: `contains`
+   - Second value: `github.com`
 
 2. **Advanced compare condition**:
    - First value: `{{comment.author.displayName}}`
@@ -128,8 +108,16 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 
 - **URL**:
 
+  Since the GitHub URL is embedded in the issue description, you'll need to extract it. Here's a simpler approach using smart values:
+
   ```
-  https://api.github.com/repos/{{issue.GitHub Issue URL.split("/").get(3)}}/{{issue.GitHub Issue URL.split("/").get(4)}}/issues/{{issue.GitHub Issue URL.split("/").get(6)}}/comments
+  https://api.github.com/repos/OWNER/REPO/issues/ISSUE_NUMBER/comments
+  ```
+
+  Replace `OWNER`, `REPO`, and `ISSUE_NUMBER` with the actual values from your GitHub URL pattern, or use this dynamic approach:
+
+  ```
+  {{#issue.description}}{{#contains "github.com"}}https://api.github.com/repos/{{issue.description.substringAfter("github.com/").substringBefore("/issues")}}/issues/{{issue.description.substringAfter("/issues/").substringBefore(")").substringBefore(" ")}}/comments{{/contains}}{{/issue.description}}
   ```
 
 - **Headers**:
@@ -154,6 +142,8 @@ The workflow uses `customfield_10000` as an example. Update this with your actua
 - Name: `Sync Jira comments to GitHub`
 - Turn it on
 
+> **💡 Note**: Since the GitHub URL is now embedded in the description, the Jira automation needs to parse it from the text. The above examples show how to extract the repository and issue number. You may need to adjust the smart value expressions based on your exact URL format.
+
 ## 🔄 Step 5: Alternative Jira → GitHub Sync (Using Repository Dispatch)
 
 If you prefer to use GitHub's repository dispatch instead of direct API calls from Jira:
@@ -162,19 +152,21 @@ If you prefer to use GitHub's repository dispatch instead of direct API calls fr
 
 Instead of the web request above, use:
 
-- **URL**: `https://api.github.com/repos/OWNER/REPO/dispatches`
+- **URL**: `https://api.github.com/repos/OWNER/REPO/dispatches` (replace OWNER/REPO with your actual repository)
 - **Headers**:
+
   ```
   Authorization: Bearer YOUR_GITHUB_PAT_HERE
   Accept: application/vnd.github.v3+json
   Content-Type: application/json
   ```
+
 - **Request Body**:
   ```json
   {
     "event_type": "jira-comment-sync",
     "client_payload": {
-      "issue_number": "{{issue.GitHub Issue URL.split("/").get(6)}}",
+      "issue_number": "{{issue.description.substringAfter('/issues/').substringBefore(')').substringBefore(' ')}}",
       "comment_body": "{{comment.body}}",
       "author": "{{comment.author.displayName}}",
       "jira_url": "{{baseUrl}}/browse/{{issue.key}}"
@@ -237,9 +229,9 @@ node create.js "Task" "Test Issue" "Test description" "https://github.com/user/r
    - Verify the workflow has access to the environment
    - Ensure secrets are added to the correct environment
 
-3. **Custom field not populated**:
-   - Verify field ID in workflow
-   - Check field is on create screen
+3. **GitHub URL not found in Jira**:
+   - Verify the issue description contains the GitHub URL
+   - Check the ADF formatting is working correctly
 
 4. **Jira automation not triggered**:
    - Check automation rule is enabled
@@ -285,6 +277,7 @@ node create.js "Task" "Test Issue" "Test description" "https://github.com/user/r
 ✅ **Clean Node.js architecture** with proper error handling
 ✅ **ADF support** for rich text formatting in Jira
 ✅ **Local testing capabilities** for development
+✅ **No custom field setup required** - GitHub URL included in description
 
 ## 🛠️ Technical Features
 
