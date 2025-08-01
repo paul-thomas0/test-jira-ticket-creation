@@ -54,6 +54,15 @@ jobs:
           JIRA_ISSUE_TYPE=$(node map-issue-type.js "$GITHUB_LABELS")
 
           echo "Mapped to Jira issue type: $JIRA_ISSUE_TYPE"
+          echo "Creating Jira issue..."
+          echo "Jira issue type: $JIRA_ISSUE_TYPE"
+          echo "Jira issue title: [GitHub] ${{ github.event.issue.title }}"
+          echo "Jira issue body: $ISSUE_BODY"
+          echo "Jira issue URL: ${{ github.event.issue.html_url }}"
+          echo "Jira issue author: ${{ github.event.issue.user.login }}"
+          echo "Jira issue created at: ${{ github.event.issue.created_at }}"
+          echo "Jira issue labels: $GITHUB_LABELS"
+          echo "node create.js $JIRA_ISSUE_TYPE [GitHub] ${{ github.event.issue.title }} $ISSUE_BODY ${{ github.event.issue.html_url }} ${{ github.event.issue.user.login }} ${{ github.event.issue.created_at }} $GITHUB_LABELS"
 
           # Create Jira issue using Node.js script
           node create.js \
