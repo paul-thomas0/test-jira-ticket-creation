@@ -2,7 +2,7 @@
   "mappings": {
     "Bug Report": "Bug Report",
     "Improvement": "Improvement",
-    "Technical Support": "Technical Support",
+    "Technical Support": "Technical upport",
     "Feature Request": "New Feature"
   },
   "defaultIssueType": "Technical Support",
