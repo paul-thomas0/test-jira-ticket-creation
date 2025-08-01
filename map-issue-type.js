@@ -18,15 +18,12 @@ function mapGitHubLabelsToJiraIssueType(githubLabels, configPath = "./label-mapp
     // Check each label against the mappings
     for (const label of githubLabels) {
       if (mappings[label]) {
-        console.log(`✅ Mapped GitHub label "${label}" to Jira issue type "${mappings[label]}"`);
         return mappings[label];
       }
     }
 
     // If no mapping found, use default
-    console.log(
-      `ℹ️  No mapping found for labels: [${githubLabels.join(", ")}]. Using default issue type: "${defaultIssueType}"`,
-    );
+    console.log(defaultIssueType);
     return defaultIssueType;
   } catch (error) {
     console.error("❌ Error reading mapping configuration:", error.message);
@@ -136,10 +133,6 @@ if (require.main === module) {
     const configPath = args[1] || "./label-mapping.json";
 
     const jiraIssueType = mapGitHubLabelsToJiraIssueType(githubLabels, configPath);
-
-    console.log("\n📊 Mapping Result:");
-    console.log(`GitHub Labels: [${githubLabels.join(", ")}]`);
-    console.log(`Jira Issue Type: ${jiraIssueType}`);
 
     // Output for GitHub workflow
     if (process.env.GITHUB_OUTPUT) {
